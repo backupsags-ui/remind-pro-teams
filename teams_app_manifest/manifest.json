@@ -1,14 +1,14 @@
 {
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
   "manifestVersion": "1.16",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "id": "a1b2c3d4-e5f6-7890-1234-56789abcdef0",
   "packageName": "com.internal.teamsremindpro",
   "developer": {
     "name": "Internal Team",
-    "websiteUrl": "https://YOUR-SPACE-NAME.streamlit.app",
-    "privacyUrl": "https://YOUR-SPACE-NAME.streamlit.app",
-    "termsOfUseUrl": "https://YOUR-SPACE-NAME.streamlit.app"
+    "websiteUrl": "https://remind-pro-teams-6pxurhmmqvbrkfojdywzkr.streamlit.app",
+    "privacyUrl": "https://remind-pro-teams-6pxurhmmqvbrkfojdywzkr.streamlit.app",
+    "termsOfUseUrl": "https://remind-pro-teams-6pxurhmmqvbrkfojdywzkr.streamlit.app"
   },
   "name": {
     "short": "Remind Pro",
@@ -27,21 +27,20 @@
     {
       "entityId": "reminders_tab",
       "name": "Reminders",
-      "contentUrl": "https://YOUR-SPACE-NAME.streamlit.app/?embed=true",
-      "websiteUrl": "https://YOUR-SPACE-NAME.streamlit.app",
+      "contentUrl": "https://remind-pro-teams-6pxurhmmqvbrkfojdywzkr.streamlit.app/?embed=true",
+      "websiteUrl": "https://remind-pro-teams-6pxurhmmqvbrkfojdywzkr.streamlit.app",
       "scopes": ["personal", "team"]
     }
   ],
   "configurableTabs": [
     {
-      "configurationUrl": "https://YOUR-SPACE-NAME.streamlit.app/?embed=true",
+      "configurationUrl": "https://remind-pro-teams-6pxurhmmqvbrkfojdywzkr.streamlit.app/?embed=true",
       "canUpdateConfiguration": true,
       "scopes": ["team", "groupchat"]
     }
   ],
   "validDomains": [
-    "YOUR-SPACE-NAME.streamlit.app",
-    "*.streamlit.app",
-    "*.hf.space"
+    "remind-pro-teams-6pxurhmmqvbrkfojdywzkr.streamlit.app",
+    "*.streamlit.app"
   ]
 }
