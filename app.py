@@ -42,6 +42,13 @@ def set_setting(key, value):
     conn.commit()
     conn.close()
 
+def get_contact_role(name):
+    if not name: return ""
+    conn = get_conn()
+    row = conn.execute("SELECT role FROM contacts WHERE name=?", (name,)).fetchone()
+    conn.close()
+    return row[0] if row and row[0] else ""
+
 if "default_webhook" not in st.session_state:
     st.session_state.default_webhook = get_setting("default_webhook", "")
 
@@ -75,8 +82,16 @@ def send_teams_card(task, is_overdue=False):
     color = "Attention" if "P1" in str(priority) or is_overdue else "Accent"
     prefix = "🚨 QUÁ HẠN - " if is_overdue else "⏰ "
     cl_text = "\n".join([f"- [{'✅' if i.get('done') else '⬜'}] {i.get('text','')}" for i in checklist]) or "Không có checklist"
-    scope = "👤 **Người thực hiện:** " + (", ".join(assignees) if assignees else "Chưa gán")
-    if task.get("created_by_name"): scope += f"\n\n👑 **Người giao:** {task.get('created_by_name')}"
+    assignee_lines = []
+    for name in assignees:
+        role = get_contact_role(name)
+        assignee_lines.append(f"{name} ({role})" if role else name)
+    assignee_text = ", ".join(assignee_lines) if assignee_lines else "Chưa gán"
+    scope = f"👤 **Người thực hiện:** {assignee_text}"
+    if task.get("created_by_name"):
+        creator_role = get_contact_role(task.get("created_by_name"))
+        creator_display = f"{task.get('created_by_name')} ({creator_role})" if creator_role else task.get("created_by_name")
+        scope += f"\n\n👑 **Người giao:** {creator_display}"
     payload = {"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","content":{"$schema":"http://adaptivecards.io/schemas/adaptive-card.json","type":"AdaptiveCard","version":"1.4","body":[{"type":"TextBlock","text":f"{prefix}NHẮC VIỆC - Remind Pro","weight":"Bolder","color":color,"size":"Medium"},{"type":"TextBlock","text":task.get("title",""),"wrap":True,"size":"Large","weight":"Bolder"},{"type":"FactSet","facts":[{"title":"Thời gian:","value":task.get("remind_at","")},{"title":"Ưu tiên:","value":priority},{"title":"Trạng thái:","value":task.get("status","Pending")},{"title":"Bàn giao:","value":str(task.get("handover_count",0))}]},{"type":"TextBlock","text":scope,"wrap":True},{"type":"TextBlock","text":f"**Checklist:**\n{cl_text}","wrap":True},{"type":"TextBlock","text":task.get("description") or "","wrap":True,"isSubtle":True}]}}]}
     try: return requests.post(webhook, json=payload, timeout=10).status_code < 400
     except: return False
@@ -90,20 +105,27 @@ if menu == "📌 Board View":
     st.title("📌 Board View")
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM reminders ORDER BY remind_at", conn)
-    contacts_df = pd.read_sql("SELECT name FROM contacts ORDER BY name", conn)
+    contacts_df = pd.read_sql("SELECT name, role FROM contacts ORDER BY name", conn)
     conn.close()
     names = [""] + contacts_df["name"].tolist() if not contacts_df.empty else [""]
-    c1, c2, c3 = st.columns([2,1,1])
+    roles = [""] + sorted([r for r in contacts_df["role"].dropna().unique().tolist() if r]) if not contacts_df.empty else [""]
+    c1, c2, c3, c4 = st.columns([2,1,1,1])
     with c1:
         user = st.selectbox("👤 Chọn tài khoản", names)
         st.session_state.current_user = user
     with c2: status_f = st.selectbox("Trạng thái", ["Tất cả","Pending","In Handover","Completed","Quá hạn"])
     with c3: prio_f = st.selectbox("Ưu tiên", ["Tất cả","P1","P2","P3"])
+    with c4: role_f = st.selectbox("Vai trò", ["Tất cả"] + [r for r in roles if r])
     if not df.empty:
         if status_f != "Tất cả":
             if status_f == "Quá hạn": df = df[(df.remind_at <= now_str()) & (df.status.isin(["Pending","In Handover"]))]
             else: df = df[df.status == status_f]
         if prio_f != "Tất cả": df = df[df.priority.str.contains(prio_f, na=False)]
+        if role_f != "Tất cả" and not contacts_df.empty:
+            role_names = contacts_df[contacts_df["role"] == role_f]["name"].tolist()
+            if role_names:
+                mask = df["assignees_json"].apply(lambda x: any(n in str(x) for n in role_names))
+                df = df[mask]
         if user:
             t1, t2 = st.tabs(["📥 Việc TÔI ĐƯỢC GIAO", "📤 Việc TÔI ĐÃ GIAO"])
             with t1:
@@ -184,11 +206,11 @@ elif menu == "👥 Danh bạ & Webhook":
     st.title("👥 Danh bạ & Webhook")
     t1, t2 = st.tabs(["Danh bạ", "Webhook"])
     with t1:
-        st.caption("Tên dùng để gán việc. Email và Vai trò hiện chỉ lưu để dùng sau.")
+        st.caption("Tên dùng để gán việc. Vai trò dùng để lọc và hiện trên thông báo Teams.")
         with st.form("add_contact_form", clear_on_submit=True):
             n = st.text_input("Tên *")
             e = st.text_input("Email (tùy chọn)")
-            r = st.text_input("Vai trò (tùy chọn)")
+            r = st.text_input("Vai trò (ví dụ: Supervisor, Agent)")
             submitted = st.form_submit_button("Thêm nhân sự")
             if submitted:
                 if not n.strip():
@@ -205,10 +227,8 @@ elif menu == "👥 Danh bạ & Webhook":
                         conn.close()
                     st.rerun()
         contacts_df = pd.read_sql("SELECT * FROM contacts ORDER BY name", get_conn())
-        if contacts_df.empty:
-            st.info("Chưa có nhân sự nào.")
-        else:
-            st.dataframe(contacts_df, use_container_width=True)
+        if contacts_df.empty: st.info("Chưa có nhân sự nào.")
+        else: st.dataframe(contacts_df, use_container_width=True)
     with t2:
         st.subheader("Webhook mặc định")
         wh = st.text_input("Webhook URL", value=get_setting("default_webhook",""))
@@ -233,6 +253,6 @@ elif menu == "📊 Thống kê":
     if not df.empty: st.bar_chart(df.pivot_table(index="status", columns="priority", values="c", fill_value=0))
 
 elif menu == "❓ Hướng dẫn":
-    st.markdown("""### Hướng dẫn\n- **Tên**: dùng để gán việc và lọc Board View\n- **Email / Vai trò**: hiện chỉ lưu, chưa dùng để gửi thông báo hay phân quyền\n- Webhook được lưu vào database\n""")
+    st.markdown("""### Hướng dẫn\n- **Vai trò**: dùng để lọc ở Board View và hiện trên thông báo Teams\n- Webhook được lưu vào database\n""")
 
 st.sidebar.caption(f"Giờ: {now_str()}")
